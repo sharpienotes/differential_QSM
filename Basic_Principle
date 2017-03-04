@@ -1,0 +1,7 @@
+Basic principle of the differential QSM approach:
+
+1) Have data with region of interest \Omega and also a background (not of interest)
+2) Want to effectively separate the data of interest from the boring background
+
+Procedure:
+a) 
