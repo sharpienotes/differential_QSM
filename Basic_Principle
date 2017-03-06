@@ -7,4 +7,12 @@ Procedure:
     a) acquitre MR data
             i) at multiple echo times
             ii) at a single echo time
-    b)
+
+    b) get relationship between B-field and magnetic susceptibility (both at same location)
+            i) use Laplacian of B-field and 1/3 of Lap. of \chi minus second derivative of \chi
+
+    c) convolute b) to get the noise property
+            i) colvolving b) with a Green's function
+            ii) colvolving b) with 1/r where r is the distance to some origin in 3D space
+
+    d) estimate \chi distribution based on the noise property
