@@ -4,4 +4,7 @@ Basic principle of the differential QSM approach:
 2) Want to effectively separate the data of interest from the boring background
 
 Procedure:
-    a) 
+    a) acquitre MR data
+            i) at multiple echo times
+            ii) at a single echo time
+    b)
