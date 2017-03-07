@@ -1,0 +1,127 @@
+3. Numerical Implementation
+
+[0088] In some implementations, the relationships above can be solved numerically. As an example, FIG. 2 shows a process 200 for mapping tissue magnetic susceptibility numerically. In this example, continuous spatial location r is discretized onto regular grid as well as all the functions taking r as a parameter. The discrete versions of continuous operations are described below.
+
+3.1. I) Dipole Convolution
+
+[0089] The spatial convolution d*χ is expressed as Dχ, where D is a matrix representing the dipole convolution, and can be efficiently calculated in Fourier space. In an example implementation, D=F-1diag(Λ)F, where F-1 and F are inverse and forward 3-dimensional Fourier transforms, diag(Λ) denotes a diagonal matrix whose elements are Λ, and Λ=vec(1/3-kz2/k2) denotes a vector whose elements are 1/3-kz2/k2, where vec denotes a vectorization operator, k denotes the Fourier space coordinates and kz denotes the direction of the main magnetic field. In another embodiment, D=F-1diag(Λ)F, where
+
+Λ = vec [ F ( 1 4 π 3 ( r ^ z ^ ) 2 - 1 r 3 ) ] with r = x 2 + y 2 + z 2 . ##EQU00022##
+
+3.2. II) Laplace Operator and Other Differential Operators
+
+[0090] Similar to the dipole convolution, the Laplace operator ∇2χ is expressed as L.sub.χ, where L is a matrix representing the Laplacian, and can be efficiently evaluated in Fourier space with L=F-1diag[vec(-k2)]F, or L=F-1diag[vec(F())]F, where is the discrete Laplace operator applied on a Dirac delta function in image space. In one embodiment, is implemented using the finite difference method to approximate derivatives, e.g., the 2nd order derivative along xis approximated as ∂2φ/∂x2=[(φ(x+h)-φ(h))-(.- phi.(h)-φ(x-h))]/h2, where h is the distance between neighboring grid points along x. The finite difference implementation of ∇2f also allows simultaneous correction of phase wraps on f by adding multiples of 2π to the differences of neighboring voxels (e.g. φ(x+h)-φ(h) and φ(h)-φ(x-h), respectively), such that the corrected differences fall in (-π,π].
+
+[0091] In another example implementation, is approximated by taking the difference between a certain voxel and the spherical mean value (SMV) of its surrounding voxels within a certain radius: (δ(r)-s(r))*φ, where δ(r) is a Dirac delta function, s(r) is equal to 1/(4/3πR0^3) when |r|<R0 and 0 otherwise. The convolution can be efficiently carried out in Fourier space as well through L=F-1diag[vec(F(δ-s))]F.
+
+[0092] The operator d*∇2χ=Pχ is implemented in one embodiment by combining the dipole convolution and Laplace operator, which may be expressed as DL=F-1diag[vec(Λ)]diag[vec(-k2)]F, or DL=F-1diag[vec(Λ)]diag[vec(F())]F. In another example implementation: P=F-1diag[vec()]F, where is the discrete differential dipole operator in image space as in Eq. 6 with the second order derivatives implemented using the finite difference methods. Since d*∇2χL=PχL and for the sake of simplicity, we use PχL to denote both PχL and DLχL hereafter unless specifically indicated otherwise.
+
+3.3. III) Evaluation of the Data Fidelity Term in the Presence of Noise
+
+[0093] The process 200 begins by setting up a data fidelity term (step 220).
+
+[0094] With the definition of discrete dipole convolution and Laplacian provided above, we now express the discrete data fidelity term in Eq. 10 as: ∥M(PχL-Lf)∥22, here M is a diagonal matrix representing a binary mask with ones denoting regions where Lf can be faithfully evaluated and zeros otherwise. It should be noted that the binary mask M, in some cases, may be smaller than the original region of interest Ω, depending on the radius of the discrete Laplace operator as illustrated in FIG. 3.
+
+[0095] In MRI, the measured f is often wrapped due to finite dynamic range and always contaminated by noise n, which is modeled as a multivariate random variable. Beside the unwrapping through the finite difference implementation described in 3.2, there are many techniques that can be used to impose continuity or smoothness in phase unwrapping, typically via path finding (including non-continuous path, residual balancing, or branch cut) or global error minimization (least squares, Laplace's unwrapping). A robust and fast method from the path finding category is the image quality guided region growth algorithm, which has been found to work well with MRI data using signal-to-noise ratio (SNR) as the image quality guidance. There are a number of approaches to take the noise into account. Before going into details, a brief analysis of the noise behavior in MRI will set ground for the following specific methods.
+
+[0096] It is generally assumed that independently and identically distributed (i.i.d.) zero-mean Gaussian noise exists in both the real and imaginary parts of the complex MRI signal. In QSM, it is the signal phase that is of interest. Although the phase noise n has a complicated distribution in general, it may be approximated as a random variable uniformly distributed between [-π,π) when the signal-to-noise ratio (SNR) is low (e.g., SNR<1). When the SNR is high (e.g., SNR>5), the phase noise n may be approximated as additive zero-mean independent Gaussian noise whose covariance matrix Ψ=diag[vec(1/SNR(r)2)], where SNR(r) denotes the SNR of the voxel at a spatial location r and may vary from location to location. To whiten this spatially varying noise ε, a weighting matrix W=Ψ-1/2=diag[vec(SNR(r))] needs to be applied.
+
+3.3.1. a. Noise Whitening on Lf
+
+[0097] Unfortunately, the Laplace operator changes the noise property on Lf. After the linear transformation L, the covariance matrix for noise n' on Lf becomes Ψ'=LΨLT, and the noise whitening matrix W'=Ψ'-1/2. So the data fidelity term needs to be adjusted accordingly:
+
+∥MW'(PχL-Lf)∥22. Eq. 16
+
+[0098] One practical concern in evaluating W' is that, since Ψ' has off diagonal elements, W'=Ψ'-1/2 may not be easily diagonalizable, preventing efficient calculation. However, Ψ is a diagonal matrix in standard MRI and both LT and L are diagonally dominant, so Ψ' is also diagonally dominant and may be approximated using its diagonal elements only, e.g., the variance of n'.
+
+[0099] When using the discrete Laplace operator, any point r on Lf is a linear combination of its neighbors on f, i.e. (Lf)(r)=Σr'a(r')f(r+r'). Therefore, the variance of n' at the same location is σn'2=Σr'a(r')2σn2(r+r'), where σn2(r)=1/SNR(r)2 is the variance of n on f. This formulation also suggests that the new noise variance can be efficiently calculated through a convolution. Thus, Ψ' is approximated as diag(σn'2), and W'=Ψ'-1/2=diag[vec(1/σn')].
+
+3.3.2. b. Noise Whitening on f--High SNR Case
+
+[0100] From previous analyses in 0, f and its non-harmonic component fnh(r)=∫.sub.Ω∇2f(r')/|r-r'|dr'=∇.- sup.2f|.sub.Ω*1/r have the same noise characteristics. Therefore, we construct a new data fidelity term to minimize any discrepancy with respect to fnh:
+
+∥WM(GMPχL-GMLf)∥.sub.Ω2. Eq. 17
+
+[0101] Here, MLf represents ∇2f|.sub.Ω, and G is the matrix representation of convolution with 1/r. Note that the noise whitening matrix W is readily available in the measured field data f. Ideally, G=L-1 such that LG is an identity matrix, corresponding to its counterpart in continuous space ∇2(1/r)=-4πδ(r). L-1 can be calculated as L-1=F-1diag[vec(-1/k2)]F or L-1=F-1diag[vec(1/F())]F. In practice, there may be large eigenvalues close to the center of Fourier space, making the numerical calculation unstable. Therefore, a dampening function such as a high-pass filter H may be applied in G to ensure numerical stability: G=HL-1. A variety of window functions can be used to construct the high-pass filter, such as rectangle function, Gaussian window, Hann window, Hamming window, Poisson window, etc.
+
+3.3.3. c. Noise Whitening on f Through e-if in Complex Plane--Low SNR Case
+
+[0102] As noise in MRI signal is in general Gaussian in the complex domain, the noise can also be whitened in the complex plane directly by minimizing the following nonlinear data fidelity terms:
+
+∥MW'(e-PχL-e-iLf)∥_2^2, Eq. 18
+
+and
+
+∥MW(e-iGMPχL-e-iGMLf)∥_2^2 Eq. 19
+
+[0103] where i= {square root over (-1)}. It is noted that Eq. 19 is equivalent to ∥MWe-i(f-GMLf)(e-iGMPχL-e-iGMLf).paralle- l..sub.Ω2=∥MW(e-i(GMPχL+f-GMLf)-e.s- up.-if)∥.sub.Ω2. In the expression, the measurement We-if may be the original complex MRI signal with i.i.d. zero-mean Gaussian noise, where the least-squares fitting yields a statistically optimal solution. Non diagonal noise whitening matrix W can be used in the case of parallel imaging of multiple coils with accelerating factor larger than 1.
+
+[0104] When multiple orientation data is available, the data fidelity term can be similarly generated for each of the orientations. For multiple echo time data, the signal model exemplified by Eqs. 18 and 19 may be extended to image data for all each times or may be applied to a composite image. For tissue involving fat, the signal model can be further extended to include a chemical shift factor, which can be separated in the minimization process using prior knowledge of fat resonance frequency offset and spatial smoothness of susceptibility field.
+
+3.4. V) Evaluation of the Regularization Term
+
+[0105] After setting up a data fidelity term, the process 200 continues by setting up a regularization term (step 230).
+
+[0106] A variety of regularization strategies is applicable.
+
+[0107] In an example implementation:
+
+R(χL)=∥WGΦχL∥pp, Eq. 20
+
+[0108] where Φ is a feature extraction operator, which can be an identity matrix, a gradient operator, a Laplace operator, or wavelet transform; WG is the weighting matrix; ∥s∥p is the Lp norm of s defined as ∥s∥p=(Σi|si|p)1/p, and 1≦p≦2.
+
+[0109] In its simplest form, WG can be an identity matrix. However, to take advantage of the complex MRI data, WG can be used to encode anatomical information. For example, WG can be derived from the amplitude component of the complex MRI signal A(r), where WG=0 for |ΦA(r)|>threshold and WG=1 otherwise.
+
+[0110] In another example implementation,
+
+R(χL)=∥χL∥wTV, Eq. 21
+
+[0111] where ∥s∥wTV is the weighted total variation of s defined as ∥s∥wTV=
+
+Σ i w i ( ∂ s ∂ x ) i 2 + ( ∂ s ∂ y ) i 2 + ( ∂ s ∂ z ) i 2 , ##EQU00023##
+
+where wi could be used to incorporate anatomical information, i.e., wi=0 for edges and 1 otherwise. When wi≡1, ∥s∥wTV is equivalent to the canonical total variation norm.
+
+[0112] In another example implementation,
+
+R(χL)=∥WGΦχL∥pp+b- ∥χL∥wTV, Eq. 22
+
+3.5. IV) Evaluation of the Boundary Term
+
+[0113] After setting up a regularization term, the process 200 may continue by setting up a boundary term (step 240).
+
+[0114] In an example implementation, a Dirichlet boundary condition term ∥χL-χL0∥.sub.∂Ω.su- p.2 can be implemented as:
+
+∥MS(χL-χL0)∥22, Eq. 23
+
+[0115] where MS is a binary mask denoting the regions where true susceptibility χL0 is assumed to be known, such as the surface of Ω.
+
+[0116] In human brain imaging, the cerebrospinal fluid (CSF) in the subarachnoid space encloses the brain parenchyma and may assume a constant susceptibility of -9.04 parts per million (ppm) if vacuum is chosen to be the reference, or 0 ppm if water is chosen to be the reference. The CSF in the ventricle may also be used to enforce constant values inside the brain. The CSF may be segmented manually or automatically. The CSF has long T1 relaxation time and long T2 relaxation time compare to normal brain tissue, so it appears hypointense on T1 weighted images and hyperintense on T2 weighted images, allowing for visual distinction. In imaging situations where χL0 is unavailable in MS, constant susceptibility may be assigned.
+
+[0117] In another example implementation, a Neumann boundary condition term ∥χL-χL0∥.sub.∂.OMEG- A.2 can be implemented as:
+
+M s ( N ∇ χ L - ∂ χ L 0 ∂ n ) 2 2 , Eq . 24 ##EQU00024##
+
+[0118] where N is the matrix representation of the normal direction n of the boundary and ∇ is the gradient operator. n can be efficiently obtained by constructing a function F(x, y, z), which returns the distance between (x, y, z) and the nearest pixel in Ω. So F(x, y, z)=0 denotes the surface of Ω, then the normal direction at a point (x, y, z) on the surface is given by ∇F(x, y, z).
+
+∂ χ L 0 ∂ n ##EQU00025##
+
+is the directional derivative of susceptibility on the surface along the normal direction of the surface. When
+
+∂ χ L 0 ∂ n ##EQU00026##
+
+is unavailable, it is set to zero.
+
+[0119] In some implementations, the boundary term can be established, as described above, each time the process 200 is performed. For example, in some cases, each time the process 200 is performed to process one or more sets of MR data, boundaries terms can be established based on one or more of the above described techniques. In some implementations, the boundary term can be established selectively (e.g., on a case by case basis). As an example, in some instances where the process 200 is performed, the boundary term can be established, while in other instances where the process 200 is performed, the boundary term might be established. In some cases, the process 200 can be performed two or more times, where at least one performance of the process 200 includes the establishing of a boundary term and at least one performance of the process 200 does not include the establishing of a boundary term. The results of each performance of the process 200 can be subsequently compared to determine if establishing a boundary term improves the result. In some cases, this can be determined experimentally (e.g., by processing MR data corresponding to subjects of a known distribution of magnetic susceptibility).
+
+3.6. VI) Solver
+
+[0120] After setting up a boundary term (if needed), the process 200 continues by minimizing the energy function (step 250).
+
+[0121] One way to minimize energy functions, such as the ones shown in Eqs. 11, 12, Eq. 14, and 15 is to use the Newton type of method, such as the Newton method for linear data fidelity term with approximate derivatives for the L1 norm for the regularization term, and the Gauss-Newton Method for the nonlinear data fidelity term. In this technique, the solution χ is iteratively updated. In the nth iteration, the new solution χ.sup.(n+1)=χ.sup.(n)-H-1g, where H denotes the Hessian matrix and g is the gradient direction of the energy function. Where the inverse Hessian applied to the gradient can be solved efficiently using conjugate gradient algorithm. Since the energy function E is expressed as a linear combination of several terms, its Hessian and gradient is also the linear combination of the Hessian and gradient of these terms. The Hessian and gradient of these individual terms are listed in Tables 1 and 2 below.
+
+TABLE-US-00001 TABLE 1 Gradient of the energy function gradient g Data fidelity term ∥MW'(PχL - Lf)∥22 W _ = def MW ' , D _ = def P , b _ = def Lf 2 ( WD _ T W _ ( D _ χ L ( n ) - b _ ) ##EQU00027## ∥MW(GMPχL - GMLf)∥22 W _ = def MW , D _ = def GM P , b _ = def GM Lf 2 ( WD _ T W _ ( D _ χ L ( n ) - b _ ) ##EQU00028## ∥MW'(e-iPχL - e-iLf)∥22 W _ = def MW ' e - iPχ L ( n ) , D _ = def P , b _ = def MW ' e iLf 2 rea l [ ( i WD _ ) H ( W _ - b _ ) ] ##EQU00029## ∥MW(e-iGMPχL - e-iGMLf)∥22 W _ = def MWe - iGMPχ L ( n ) , D _ = def GMP , b _ = def MW e iGMLf 2 real [ ( i WD _ ) H ( W _ - b _ ) ] ##EQU00030## Boundary term ∥MS(χL - χL0)∥22 2MSTMS(χL.sup.(n) - χL0) M S ( N ∇ χ L - ∂ χ L 0 ∂ n ) 2 2 ##EQU00031## 2 ( M S N ∇ ) T M S ( N ∇ χ L ( n ) - ∂ χ L 0 ∂ n ) ##EQU00032## Regularization term ∥WGΦχL∥pp, 1 ≦ p ≦ 2 (WGΦ)Tdiag(|WGΦχL.sup.(n)|p-2)WGΦχL.sup.(n) ∥χL∥wTV (∇)Tdiag(w/|∇χL.sup.(n)|, w/|∇χL.sup.(n)|, w/|∇χL.sup.(n)|)∇χL.sup.(n)
+
+TABLE-US-00002 TABLE 2 Hessian of the energy function Hessian H Data fidelity term ∥MW'(PχL - Lf)∥22 W _ = def MW ' , D _ = def P 2 ( WD _ ) T WD _ ##EQU00033## ∥MW(GMPχL - GMLf)∥22 W _ = def MW , D _ = def GMP 2 ( WD _ ) T WD _ ##EQU00034## ∥MW'(e-ip - e-iLf)∥22 W _ = def MW ' e - iPχ L ( n ) , D _ = def DL 2 ( WD _ ) H WD _ ##EQU00035## ∥MW(e-iGMPχL - e-iGMLf)∥22 W _ = def MWe - iGMPχ L ( n ) , D _ = def GMP 2 ( WD _ ) H WD _ ##EQU00036## Boundary term ∥MS(χL - χL0)∥22 2MSTMS M S ( N ∇ χ L - ∂ χ L 0 ∂ n ) 2 2 ##EQU00037## 2(MSN∇)TMSN∇ Regularization term ∥WGΦχL∥pp, 1 ≦ p ≦ 2 (WGΦ)Tdiag(|WGΦχL.sup.(n)|p-2)WGΦ ∥χL∥wTV (∇)Tdiag(w/|∇χL.sup.(n)|, w/|∇χL.sup.(n)|, w/|∇χL.sup.(n)|)∇
+
+Read more: http://www.patentsencyclopedia.com/app/20150145515#ixzz4aeLvprhZ
